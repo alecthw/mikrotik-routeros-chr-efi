@@ -115,10 +115,22 @@ jobs:
           mkdir -p ./Firmware/
           cp -f chr-efi.qcow2 ./Firmware/
           qemu-img convert -f qcow2 -O vmdk chr-efi.qcow2 ./Firmware/chr-efi.vmdk
+          qemu-img convert -f qcow2 -O vpc chr-efi.qcow2 ./Firmware/chr-efi.vhd
           qemu-img convert -f qcow2 -O vhdx chr-efi.qcow2 ./Firmware/chr-efi.vhdx
           qemu-img convert -f qcow2 -O vdi chr-efi.qcow2 ./Firmware/chr-efi.vdi
           qemu-img convert -f qcow2 -O raw chr-efi.qcow2 ./Firmware/chr-efi.img
           ls -l ./Firmware
+
+      - name: Zip images
+        run: |
+          cd ./Firmware/
+          zip chr-${{matrix.version}}.qcow2.zip chr-efi.qcow2
+          zip chr-${{matrix.version}}.vmdk.zip chr-efi.vmdk
+          zip chr-${{matrix.version}}.vhd.zip chr-efi.vhd
+          zip chr-${{matrix.version}}.vhdx.zip chr-efi.vhdx
+          zip chr-${{matrix.version}}.vdi.zip chr-efi.vdi
+          zip chr-${{matrix.version}}.img.zip chr-efi.img
+          ls -l ./
 
       - name: Upload Firmware to release
         uses: ncipollo/release-action@v1
@@ -129,4 +141,4 @@ jobs:
           tag: ${{matrix.version}}
           commit: master
           token: ${{ secrets.PERSONAL_TOKEN }}
-          artifacts: ./Firmware/*
+          artifacts: ./Firmware/*.zip
