@@ -51,6 +51,10 @@ jobs:
           sudo -E apt -y install curl qemu-utils rsync unzip zip
           sudo -E timedatectl set-timezone "Asia/Shanghai"
 
+      - name: Load nbd module
+        run: |
+          sudo -E modprobe nbd
+
       - name: Download
         run: |
           curl -skL --retry 3 --connect-timeout 3 -o chr.img.zip https://download.mikrotik.com/routeros/${{matrix.version}}/chr-${{matrix.version}}.img.zip
@@ -60,61 +64,63 @@ jobs:
       - name: Convert to qcow2
         run: |
           qemu-img convert -f raw -O qcow2 chr-*.img chr.qcow2
+          cp -af chr.qcow2 chr-efi.qcow2
           rm -rf chr-*.img
 
-      - name: Build efi qcow2
+      - name: Connect ndb
+        run: |
+          sudo -E qemu-nbd -c /dev/nbd0 chr.qcow2
+          sudo -E qemu-nbd -c /dev/nbd1 chr-efi.qcow2
+
+      - name: Format boot partition
+        run: |
+          sudo -E mkfs -t fat /dev/nbd1p1
+
+      - name: Create tmp dir
+        run: |
+          sudo -E rm -rf /tmp/chr*
+          sudo -E mkdir /tmp/chr-bios/
+          sudo -E mkdir /tmp/chr-efi/
+
+      - name: Mount
+        run: |
+          sudo -E mount /dev/nbd0p1 /tmp/chr-bios/
+          sudo -E mount /dev/nbd1p1 /tmp/chr-efi/
+
+      - name: Sync files
+        run: |
+          sudo -E rsync -a /tmp/chr-bios/ /tmp/chr-efi/
+
+      - name: Umount
+        run: |
+          sudo -E umount /dev/nbd0p1
+          sudo -E umount /dev/nbd1p1
+
+      - name: remove tmp dir
         id: build
         run: |
-          sudo -E modprobe nbd
-          sudo -E qemu-nbd -c /dev/nbd0 chr.qcow2
-          sudo -E rm -rf /tmp/tmp*
-          sudo -E mkdir /tmp/tmpmount/
-          sudo -E mkdir /tmp/tmpefipart/
-          sudo -E mount /dev/nbd0p1 /tmp/tmpmount/
-          sudo -E rsync -a /tmp/tmpmount/ /tmp/tmpefipart/
-          sudo -E umount /dev/nbd0p1
-          sudo -E mkfs -t fat /dev/nbd0p1
-          sudo -E mount /dev/nbd0p1 /tmp/tmpmount/
-          sudo -E rsync -a /tmp/tmpefipart/ /tmp/tmpmount/
-          sudo -E umount /dev/nbd0p1
+          sudo -E rm -rf /tmp/chr*
 
-          (
-          echo 2 # use GPT
-          echo t # change partition code
-          echo 1 # select first partition
-          echo 8300 # change code to Linux filesystem 8300
-          echo r # Recovery/transformation
-          echo h # Hybrid MBR
-          echo 1 2 # partitions added to the hybrid MBR
-          echo n # Place EFI GPT (0xEE) partition first in MBR (good for GRUB)? (Y/N)
-          echo   # Enter an MBR hex code (default 83)
-          echo y # Set the bootable flag? (Y/N)
-          echo   # Enter an MBR hex code (default 83)
-          echo n # Set the bootable flag? (Y/N)
-          echo n # Unused partition space(s) found. Use one to protect more partitions? (Y/N)
-          echo w # write changes to disk
-          echo y # confirm
-          ) | sudo -E gdisk /dev/nbd0
-
+      - name: Disconnect ndb
+        run: |
           sudo -E qemu-nbd -d /dev/nbd0
+          sudo -E qemu-nbd -d /dev/nbd1
 
-          if [ $? == 0 ]; then
-              echo "status=success" >> $GITHUB_OUTPUT
-          fi
+      - name: Remove old
+        run: |
+          rm -rf chr.qcow2
 
       - name: Convert images
-        if:  steps.build.outputs.status == 'success' && !cancelled()
         run: |
           mkdir -p ./Firmware/
-          cp -f chr.qcow2 ./Firmware/chr-efi.qcow2
-          qemu-img convert -f qcow2 -O vmdk chr.qcow2 ./Firmware/chr-efi.vmdk
-          qemu-img convert -f qcow2 -O vhdx chr.qcow2 ./Firmware/chr-efi.vhdx
-          qemu-img convert -f qcow2 -O vdi chr.qcow2 ./Firmware/chr-efi.vdi
-          qemu-img convert -f qcow2 -O raw chr.qcow2 ./Firmware/chr-efi.img
+          cp -f chr-efi.qcow2 ./Firmware/
+          qemu-img convert -f qcow2 -O vmdk chr-efi.qcow2 ./Firmware/chr-efi.vmdk
+          qemu-img convert -f qcow2 -O vhdx chr-efi.qcow2 ./Firmware/chr-efi.vhdx
+          qemu-img convert -f qcow2 -O vdi chr-efi.qcow2 ./Firmware/chr-efi.vdi
+          qemu-img convert -f qcow2 -O raw chr-efi.qcow2 ./Firmware/chr-efi.img
           ls -l ./Firmware
 
       - name: Upload Firmware to release
-        if:  steps.build.outputs.status == 'success' && !cancelled()
         uses: ncipollo/release-action@v1
         with:
           name: ${{matrix.version}}
