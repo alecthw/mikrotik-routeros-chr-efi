@@ -23,7 +23,7 @@ jobs:
       matrix:
         version:
           # - 6.49.10
-          - 7.15
+          - 7.16
 
     steps:
       - name: Checkout
@@ -130,6 +130,13 @@ jobs:
           zip chr-${{matrix.version}}.vdi.zip chr-efi.vdi
           zip chr-${{matrix.version}}.img.zip chr-efi.img
           ls -l ./
+
+      - name: Archive production artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: RouterOs-efi
+          path: |
+            ./Firmware/*.zip
 
       - name: Upload Firmware to release
         uses: ncipollo/release-action@v1
