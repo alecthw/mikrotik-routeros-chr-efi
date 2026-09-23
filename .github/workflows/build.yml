@@ -23,7 +23,7 @@ jobs:
       matrix:
         version:
           # - 6.49.10
-          - 7.16.2
+          - 7.24.4
 
     steps:
       - name: Checkout
@@ -49,7 +49,7 @@ jobs:
         run: |
           sudo -E apt update
           sudo -E apt -y install curl qemu-utils rsync unzip zip
-          sudo -E timedatectl set-timezone "Asia/Shanghai"
+          sudo -E timedatectl set-timezone "Europe/Moscow"
 
       - name: Load nbd module
         run: |
@@ -57,7 +57,7 @@ jobs:
 
       - name: Download
         run: |
-          curl -skL --retry 3 --connect-timeout 3 -o chr.img.zip https://download.mikrotik.com/routeros/${{matrix.version}}/chr-${{matrix.version}}.img.zip
+          curl -k -L --retry 5 --connect-timeout 60 --limit-rate 1M -o chr.img.zip https://download.mikrotik.com/routeros/${{matrix.version}}/chr-${{matrix.version}}.img.zip
           unzip chr.*.zip
           rm -rf chr.*.zip
 
